@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Text Summarizer - Single File</title>
+  <style>
+    /* Simple clean styling */
+    :root{
+      --bg:#f4f6fb; --card:#fff; --accent:#2563eb; --muted:#6b7280;
+      --radius:12px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background:linear-gradient(180deg,#eef2ff 0%,var(--bg) 100%);
+      min-height:100vh; display:flex; align-items:center; justify-content:center; padding:28px;
+    }
+    .wrap{width:100%; max-width:920px; background:var(--card); border-radius:var(--radius); box-shadow:0 8px 30px rgba(16,24,40,0.08); padding:22px;}
+    header{display:flex; gap:16px; align-items:center; margin-bottom:14px}
+    h1{margin:0; font-size:20px}
+    p.lead{margin:0;color:var(--muted); font-size:13px}
+    .row{display:flex; gap:12px; flex-wrap:wrap; margin-top:14px}
+    .col{flex:1; min-width:260px}
+    textarea{width:100%; min-height:220px; padding:12px; border-radius:10px;border:1px solid #e6e9ef; resize:vertical; font-size:15px}
+    .controls{display:flex; gap:10px; align-items:center}
+    .input, .select, .small{
+      padding:8px 10px; border-radius:8px; border:1px solid #e6e9ef; background:white; font-size:14px;
+    }
+    button{
+      background:var(--accent); color:white; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600;
+    }
+    button[disabled]{opacity:0.6; cursor:not-allowed}
+    .output{margin-top:16px; padding:14px; border-radius:10px; background:#fafbfd; min-height:120px; border:1px solid #e9eefb; white-space:pre-wrap}
+    .meta{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .hint{font-size:13px; color:var(--muted)}
+    .footer{margin-top:16px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap}
+    .danger{color:#b91c1c; font-weight:600}
+    .small-btn{background:#f3f4f6; color:#111; padding:8px 10px; border-radius:8px; border:1px solid #e6e9ef}
+    .flex-right{margin-left:auto; display:flex; gap:8px}
+    .chip{background:#eef2ff;padding:6px 10px;border-radius:999px;border:1px solid #dbeafe;font-weight:600;color:#0369a1}
+    .sr-only{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+    @media (max-width:680px){
+      header{flex-direction:column; align-items:flex-start}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="main">
+    <header>
+      <div>
+        <h1>AI Text Summarizer</h1>
+        <p class="lead">Paste a long article and get a short summary. Single-file (HTML/CSS/JS).</p>
+      </div>
+      <div class="flex-right">
+        <div class="chip">One file</div>
+      </div>
+    </header>
+
+    <!-- CONFIG: backend URL or API key -->
+    <div class="row">
+      <div class="col">
+        <label class="hint" for="backendUrl">Backend URL (recommended for production)</label>
+        <input id="backendUrl" class="input" placeholder="https://your-backend.onrender.com (leave empty to use API key directly)" />
+      </div>
+      <div class="col">
+        <label class="hint" for="apiKey">OpenAI API Key (for local/testing only)</label>
+        <input id="apiKey" type="password" class="input" placeholder="sk-xxxx (only paste here for quick local tests)" />
+      </div>
+    </div>
+
+    <div style="height:12px"></div>
+
+    <div>
+      <label class="hint" for="inputText">Article / Text to summarize</label>
+      <textarea id="inputText" placeholder="Paste the article, blog post, or text you want summarized..."></textarea>
+    </div>
+
+    <div class="row" style="margin-top:12px; align-items:center">
+      <div style="display:flex;gap:8px;align-items:center">
+        <label class="hint" for="length">Summary length</label>
+        <select id="length" class="select">
+          <option value="short">Short (1-2 sentences)</option>
+          <option value="medium" selected>Medium (3-5 lines)</option>
+          <option value="long">Long (detailed paragraph)</option>
+        </select>
+      </div>
+
+      <div class="controls" style="margin-left:auto">
+        <button id="summarizeBtn">Summarize</button>
+        <button id="clearBtn" class="small-btn">Clear</button>
+      </div>
+    </div>
+
+    <div class="output" id="output" aria-live="polite">Your summary will appear here.</div>
+
+    <div class="footer">
+      <div class="meta">
+        <span class="hint">Mode:</span>
+        <span id="modeLabel" class="hint">Using direct API key (unsafe for public)</span>
+        <span class="hint">•</span>
+        <span id="calls" class="hint">Calls: 0</span>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button id="copyBtn" class="small-btn">Copy Summary</button>
+        <button id="downloadBtn" class="small-btn">Download .txt</button>
+      </div>
+    </div>
+
+    <div style="height:10px"></div>
+    <div>
+      <p class="hint">
+        <strong>Security note:</strong> If you deploy this single file publicly (GitHub Pages), <span class="danger">do not</span> put your OpenAI API key in it. Instead, deploy the backend (Node/Express) on Render and put that URL in <em>Backend URL</em>. The frontend will call your backend, and the backend will keep the key secret.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // Single-file summarizer JS
+    // - If backendUrl input is filled, POST { text } to `${backendUrl}/summarize` and expect a Chat Completions response JSON (same shape).
+    // - Otherwise, calls OpenAI directly using the key from apiKey input.
+    // Note: Direct calls expose key to client; use only for local testing.
+
+    const inputText = document.getElementById('inputText');
+    const output = document.getElementById('output');
+    const summarizeBtn = document.getElementById('summarizeBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const apiKeyInput = document.getElementById('apiKey');
+    const backendUrlInput = document.getElementById('backendUrl');
+    const lengthSelect = document.getElementById('length');
+    const modeLabel = document.getElementById('modeLabel');
+    const calls = document.getElementById('calls');
+
+    let callCount = 0;
+
+    function updateModeLabel(){
+      const backend = backendUrlInput.value.trim();
+      if (backend) {
+        modeLabel.textContent = `Backend mode → ${backend}`;
+      } else if (apiKeyInput.value.trim()) {
+        modeLabel.textContent = 'Using direct API key (unsafe for public)';
+      } else {
+        modeLabel.textContent = 'No backend or API key set';
+      }
+    }
+
+    backendUrlInput.addEventListener('input', updateModeLabel);
+    apiKeyInput.addEventListener('input', updateModeLabel);
+    updateModeLabel();
+
+    clearBtn.addEventListener('click', () => {
+      inputText.value = '';
+      output.textContent = 'Your summary will appear here.';
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(output.textContent);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(()=>copyBtn.textContent='Copy Summary',1000);
+      } catch (e) {
+        copyBtn.textContent = 'Copy failed';
+        setTimeout(()=>copyBtn.textContent='Copy Summary',1000);
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const blob = new Blob([output.textContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'summary.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    summarizeBtn.addEventListener('click', async () => {
+      const text = inputText.value.trim();
+      if (!text) {
+        output.textContent = 'Please paste some text to summarize.';
+        return;
+      }
+
+      const length = lengthSelect.value;
+      let instruction = '';
+      if (length === 'short') instruction = 'Write a concise 1-2 sentence summary.';
+      else if (length === 'medium') instruction = 'Write a 3-5 line readable summary.';
+      else instruction = 'Write a detailed summary in a paragraph.';
+
+      // Construct prompt
+      const prompt = `${instruction}\n\nOriginal text:\n${text}\n\nSummary:`;
+
+      // UI state
+      summarizeBtn.disabled = true;
+      summarizeBtn.textContent = 'Summarizing...';
+      output.textContent = '⏳ Summarizing — please wait...';
+
+      try {
+        const backend = backendUrlInput.value.trim();
+        let resultText = '';
+
+        if (backend) {
+          // Call user's backend. Expect same response shape as OpenAI chat completions.
+          const res = await fetch(normalizeBackendUrl(backend) + '/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          if (!res.ok) throw new Error('Backend error: ' + res.status + ' ' + res.statusText);
+          const data = await res.json();
+          // If backend forwards OpenAI response, get content
+          resultText = extractContentFromOpenAIResponse(data);
+        } else {
+          // Direct call to OpenAI (unsafe for public)
+          const key = apiKeyInput.value.trim();
+          if (!key) throw new Error('No API key provided. Enter a key or set a backend URL.');
+          const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + key
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini', // change if needed
+              messages: [
+                { role: 'user', content: prompt }
+              ],
+              max_tokens: 400
+            })
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            throw new Error('OpenAI error: ' + res.status + ' — ' + txt);
+          }
+          const data = await res.json();
+          resultText = extractContentFromOpenAIResponse(data);
+        }
+
+        // Display
+        output.textContent = resultText || 'No summary returned.';
+        callCount++;
+        calls.textContent = 'Calls: ' + callCount;
+      } catch (err) {
+        console.error(err);
+        output.textContent = 'Error: ' + (err.message || String(err));
+      } finally {
+        summarizeBtn.disabled = false;
+        summarizeBtn.textContent = 'Summarize';
+      }
+    });
+
+    function extractContentFromOpenAIResponse(data){
+      // Support both choices array or assistant response shape
+      try {
+        if (!data) return '';
+        if (data.choices && data.choices.length > 0) {
+          // Chat completions
+          const choice = data.choices[0];
+          if (choice.message && choice.message.content) return choice.message.content.trim();
+          if (choice.text) return choice.text.trim();
+          // sometimes multiple deltas - fallback:
+          return JSON.stringify(choice);
+        }
+        // If backend returns { summary: "..." }
+        if (data.summary && typeof data.summary === 'string') return data.summary;
+        // If backend returns { text: "..." }
+        if (data.text && typeof data.text === 'string') return data.text;
+        // Fallback: stringify
+        return JSON.stringify(data);
+      } catch (e) {
+        return 'Unable to parse response.';
+      }
+    }
+
+    function normalizeBackendUrl(url){
+      // remove trailing slash
+      return url.replace(/\/+$/, '');
+    }
+
+    // Helpful: allow pressing Ctrl+Enter to summarize
+    inputText.addEventListener('keydown', (e)=>{
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        summarizeBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>
