@@ -73,7 +73,7 @@
   </div>
 
   <script>
-   const BACKEND_URL = "https://backendtextsummary.onrender.com";
+   const BACKEND_URL = "https://techcodingskills.online/summarise.php";
 
     async function summarize() {
       const input = document.getElementById("inputText").value.trim();
@@ -88,7 +88,7 @@
       output.innerText = "⏳ Summarizing...";
 
       try {
-        const res = await fetch(BACKEND_URL + "/summarize", {
+        const res = await fetch(BACKEND_URL , {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: input, length })
